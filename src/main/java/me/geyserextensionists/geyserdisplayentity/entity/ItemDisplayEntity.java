@@ -143,6 +143,8 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     // The cube's rotation angles as last sent (see closestAngles)
     private Vector3f sentLeft;
     private Vector3f sentRight;
+    // Whether the rotation last sent was that of an empty rig (none)
+    private boolean sentEmptyRig;
     // (banc seulement : -Dgde.debugMoves=true)
     private static final boolean DEBUG_MOVES = Boolean.getBoolean("gde.debugMoves");
 
@@ -204,7 +206,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         moveEntityPacket.setRuntimeEntityId(geyserId);
         moveEntityPacket.setPosition(bedrockPosition().add(shown.sub(position)));
         Vector3f rotation = bedrockRotation();
-        if (kind == null || kind == Kind.ITEM_RIG) {
+        if ((kind == null || kind == Kind.ITEM_RIG) && !emptyRig()) {
             // The item rig turns the whole entity: draw it at the glided yaw
             float dy = MathUtils.wrapDegrees(renderYaw - getYaw());
             rotation = Vector3f.from(rotation.getX(), MathUtils.wrapDegrees(rotation.getY() + dy), MathUtils.wrapDegrees(rotation.getZ() + dy));
@@ -336,6 +338,12 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         for (Entity passenger : passengers) {
             if (passenger instanceof ItemDisplayEntity display && display.isValid()) display.updateSeat();
         }
+        // MineQuack: a rig that gets (or loses) its item turns to its yaw (or back to none) at once
+        boolean empty = emptyRig();
+        if (empty != sentEmptyRig) {
+            sentEmptyRig = empty;
+            if (valid && kind == Kind.ITEM_RIG) sendRenderedMove(false);
+        }
     }
 
     @Override
@@ -434,6 +442,11 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         // MineQuack: an item display of such a block (the daily chest) is better held by the item rig, which draws
         // Bedrock's own 3D item, than hidden
         return rigCanDrawItem() ? Kind.ITEM_RIG : Kind.HIDDEN;
+    }
+
+    // An item rig with no item to draw (an empty item display) and no player head
+    private boolean emptyRig() {
+        return kind == Kind.ITEM_RIG && (item == null || item == ItemData.AIR) && head == null;
     }
 
     protected boolean rigCanDrawItem() {
@@ -1213,6 +1226,10 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     public Vector3f bedrockRotation() {
         // The block rig folds the entity's rotation into its bones; falling blocks ignore rotation
         if (kind != null && kind != Kind.ITEM_RIG) return Vector3f.ZERO;
+        // MineQuack: an item rig that draws nothing (a carousel figure's root, which carries its blocks) doesn't
+        // turn either. Bedrock turns riders with their vehicle: a turning root turned its blocks a second time (their
+        // bones already hold their own yaw), and Bedrock's lagging body rotation snapped them round now and then
+        if (emptyRig()) return Vector3f.ZERO;
 
         Quaternionf combined = Quaternionf.from(lastLeft).mul(lastRight).normalize();
         Vector3f fwd = combined.rotate(0f, 0f, 1f);

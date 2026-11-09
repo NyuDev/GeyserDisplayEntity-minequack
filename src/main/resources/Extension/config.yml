@@ -25,6 +25,11 @@ block-displays:
   # Draw plain blocks with the block cube too, instead of falling blocks
   force-cube: false
 
+# Text displays: Geyser draws them as Bedrock name tags, always the same size, turned to the player and seen through
+# walls. Hide a text from a Bedrock player farther than this many blocks (0: never)
+text-displays:
+  max-distance: 10
+
 # Invisible item types
 hide-types:
   - "minecraft:leather_horse_armor"

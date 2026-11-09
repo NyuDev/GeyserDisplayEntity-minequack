@@ -30,6 +30,8 @@ public class ConfigManager {
     private boolean drawBlockDisplays = true;
     private boolean drawItemFrames = false;
 
+    private double textMaxDistance = 10;
+
     public ConfigManager(GeyserDisplayEntity extension) {
         this.extension = extension;
 
@@ -52,6 +54,9 @@ public class ConfigManager {
         this.drawItemDisplays = !config.contains("draw.item-displays") || config.getBoolean("draw.item-displays");
         this.drawBlockDisplays = !config.contains("draw.block-displays") || config.getBoolean("draw.block-displays");
         this.drawItemFrames = config.getBoolean("draw.item-frames");
+
+        // MineQuack: Bedrock players don't see a text display farther than this (blocks, 0 = always); 10 if unset
+        this.textMaxDistance = config.contains("text-displays.max-distance") ? config.getDouble("text-displays.max-distance") : 10;
 
         if (!Files.exists(GeyserDisplayEntity.getExtension().dataFolder().resolve("Entities"))) {
             FileUtils.createFiles(GeyserDisplayEntity.getExtension(), "Entities/item-displays.yml");
@@ -151,5 +156,9 @@ public class ConfigManager {
 
     public boolean isDrawItemFrames() {
         return drawItemFrames;
+    }
+
+    public double getTextMaxDistance() {
+        return textMaxDistance;
     }
 }

@@ -13,7 +13,7 @@ Geyser les ignore : Bedrock n'a pas ces entités. Cette version est celle du ré
 | Objet d'un bloc vanilla (laine, dalle…) | Comme un bloc. |
 | Objet plat vanilla (épée, flèche, poisson…) | Une plaque d'un pixel d'épaisseur avec la texture de l'objet, placée comme Java (`item/generated`, `item/handheld`). Une seule face, vue des deux côtés : de dos, l'objet est retourné, comme en Java. |
 | Coffre (dessiné en Java par un rendu à part, sans modèle de bloc) | Une boîte de 14 × 14 × 14 pixels, avec la texture la plus proche (planches, obsidienne, cuivre). |
-| `text_display` | Traduit par Geyser (un nametag). Cette version tourne son décalage (`translation`) avec le lacet du display, comme Java. |
+| `text_display` | Traduit par Geyser (un nametag). Cette version tourne son décalage (`translation`) avec le lacet du display, comme Java, et le cache à un joueur Bedrock qui en est à plus de `text-displays.max-distance` blocs (10 par défaut, 0 = jamais). |
 
 ### Glissement (manèges, canards, ballons)
 
@@ -30,11 +30,13 @@ Java assoit un joueur 0,6 bloc sous le display qu'il monte (un display n'a pas d
 
 Un display qui monte un display qui bouge (cabines d'une grande roue) est dessiné en cube et non en `falling_block` : Bedrock fait dériver un `falling_block` passager d'un véhicule en mouvement.
 
+Bedrock tourne un passager avec son véhicule, et le corps d'une entité y suit sa tête avec du retard, puis la rattrape d'un coup. Un `item_display` vide qui porte des blocs (la racine d'une figure de carrousel) garde donc sur Bedrock une rotation nulle : ses blocs ont déjà leur propre lacet dans le cube, ils ne tournent plus deux fois et ne pivotent plus d'un coup.
+
 ### Limites
 
 - Escaliers, portes, barrières reliées : seule la plus grosse boîte est dessinée.
 - Panneaux, têtes de mob (creeper, zombie…) : visibles seulement s'ils sont simples.
-- Texte : un nametag Bedrock a une taille fixe, l'échelle Java est perdue. Un texte réduit en Java paraît 2 à 4 fois plus grand sur Bedrock et peut en chevaucher un autre.
+- Texte : un nametag Bedrock a une taille fixe, l'échelle Java est perdue, et il se voit à travers les murs. Un texte réduit en Java paraît 2 à 4 fois plus grand sur Bedrock et peut en chevaucher un autre ; au-delà de `text-displays.max-distance`, il est caché.
 - Les rotations internes d'un modèle (fleurs en croix) ne sont pas appliquées. Les blocs teintés prennent la couleur des plaines.
 - Les cadres d'objets « meubles » du fork d'origine sont coupés. Ils passaient par un registre que Geyser 2.12 b1278 a retiré.
 
@@ -64,6 +66,10 @@ Ce code est une œuvre dérivée, sous la même licence ([LICENSE](LICENSE), GNU
 **Modifié par MineQuack le 09/11/2026, version minequack.5 :**
 - `ItemDisplayEntity` : hauteur des joueurs assis (voir « Passagers ») ;
 - objets plats : formes et transformations dans `BlockShapes` et `ItemDisplayEntity`, 760 objets dans `block_render.tsv`, ajoutés au pack par `tools/flat_items_pack.py`.
+
+**Modifié par MineQuack le 09/11/2026, version minequack.6 :**
+- `ItemDisplayEntity` : rotation nulle sur Bedrock pour un `item_display` vide (voir « Passagers ») ;
+- `TurnedTextDisplayEntity`, `ConfigManager`, `config.yml` : textes cachés au-delà de `text-displays.max-distance` blocs.
 
 ## Construire
 
