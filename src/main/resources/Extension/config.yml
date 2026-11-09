@@ -1,0 +1,46 @@
+# Which Java entities this extension draws on Bedrock. Changes need a restart.
+draw:
+  item-displays: true
+  block-displays: true
+  # Furniture in item frames, drawn as 3D models (needs display_transforms.json, see the README)
+  item-frames: false
+
+# General display options
+general:
+  # The height of display entity
+  height: 1.7
+  # The y-offset of display entity
+  y-offset: -0.5
+  # Use entity scale, instead of entity properties
+  vanilla-scale: false
+  vanilla-scale-multiplier: 1
+  # Equip custom items (items with custom mapping) to hand
+  hand: false
+
+# Blocks in displays: block displays, and item displays of unmapped vanilla block items. Plain ones (unrotated, one
+# block in size) are shown as Bedrock falling blocks, which draw the exact block. Every other one is drawn by the
+# resource pack's block cube: the block's box (its biggest part, for blocks made of several) with its textures, at any
+# size, stretch and rotation.
+block-displays:
+  # Draw plain blocks with the block cube too, instead of falling blocks
+  force-cube: false
+
+# Invisible item types
+hide-types:
+  - "minecraft:leather_horse_armor"
+  - "minecraft:bone"
+
+# Always hide item types, even when translated to custom Bedrock item definitions
+hide-custom-types:
+  - "minecraft:leather_horse_armor"
+
+hide-unmapped-vanilla-displays: true
+
+# Keep showing vanilla block items with no custom model (item_model or custom_model_data) even when the option above
+# hides unmapped vanilla items: they're drawn as the block itself. Custom furniture without a mapping is still hidden.
+show-plain-vanilla-blocks: true
+
+settings:
+  debug:
+    per-player-load-mappings: false
+    log-displays: false
