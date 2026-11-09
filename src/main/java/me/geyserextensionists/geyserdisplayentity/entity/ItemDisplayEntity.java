@@ -145,6 +145,16 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     private Vector3f sentRight;
     // Whether the rotation last sent was that of an empty rig (none)
     private boolean sentEmptyRig;
+    // MineQuack: too far from the Bedrock player to be drawn (displays.max-distance, view range): not spawned at
+    // all, a phone slows down with many displays in view. A group (a display and the displays riding it: a carousel
+    // figure) is decided as a whole by the display that carries the others; decided piece by piece, at different
+    // ticks, a vehicle went while its riders stayed, left behind in the air. Checked every CULL_TICKS ticks, spread
+    // over the groups; a group that moves gets a wider margin (a carousel figure swings nearer and farther as it turns)
+    private static final int CULL_TICKS = 10;
+    private static final float CULL_MARGIN = 2f;
+    private static final float CULL_MARGIN_MOVING = 8f;
+    private boolean culled;
+    private int cullTicks = Math.floorMod(entityId, CULL_TICKS);
     // (banc seulement : -Dgde.debugMoves=true)
     private static final boolean DEBUG_MOVES = Boolean.getBoolean("gde.debugMoves");
 
@@ -155,6 +165,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     @Override
     public void spawnEntity() {
         if (rigDefinition == null) rigDefinition = bedrockDefinition();
+        culled = vehicle instanceof ItemDisplayEntity carrier ? carrier.culled : tooFar();
         // (a spawn shows the display where it is, without gliding)
         cubeGlideTicks = 0;
         glideSteps = 0;
@@ -180,6 +191,45 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     public void tick() {
         if (glideSteps > 0) glideTick();
         if (head != null) placeHead();
+        if (++cullTicks >= CULL_TICKS) {
+            cullTicks = 0;
+            // (a display riding another one follows it, see setCulled)
+            if (!(vehicle instanceof ItemDisplayEntity)) {
+                boolean far = tooFar();
+                if (far != culled) setCulled(far);
+            }
+        }
+    }
+
+    // The whole group at once, the vehicle first: its riders, spawned after it, link to it as they come
+    private void setCulled(boolean far) {
+        culled = far;
+        if (kind != wantedKind()) respawn();
+        for (Entity passenger : new ArrayList<>(passengers)) {
+            if (passenger instanceof ItemDisplayEntity display && display.culled != far) display.setCulled(far);
+        }
+    }
+
+    // MineQuack: farther from the Bedrock player than Java would draw it (its view range), or than the cap. Measured
+    // from what carries it (a rider's own position is where it was spawned), so a carousel figure goes as a whole
+    private boolean tooFar() {
+        ConfigManager cfg = GeyserDisplayEntity.getExtension().getConfigManager();
+        float limit = Float.MAX_VALUE;
+        if (cfg.getDisplayMaxDistance() > 0) limit = (float) cfg.getDisplayMaxDistance();
+        if (cfg.isDisplayUseViewRange()) {
+            // (the group is seen as far as its farthest-seen piece)
+            float range = viewRange;
+            for (Entity passenger : passengers) {
+                if (passenger instanceof SlotDisplayEntity display) range = Math.max(range, display.viewRange);
+            }
+            limit = Math.min(limit, range * 64f);
+        }
+        if (limit == Float.MAX_VALUE) return false;
+        float margin = mover ? CULL_MARGIN_MOVING : CULL_MARGIN;
+        float edge = Math.max(0f, culled ? limit - margin : limit + margin);
+        Entity root = this;
+        for (int i = 0; i < 8 && root.getVehicle() != null; i++) root = root.getVehicle();
+        return session.getPlayerEntity().getPosition().distanceSquared(root.getPosition()) > edge * edge;
     }
 
     // One step of the glide: Java's lerp from where the display was drawn to the latest position
@@ -307,6 +357,10 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     public void setPassengers(List<Entity> passengers) {
         super.setPassengers(passengers);
         placeRiders();
+        // (new riders are shown or hidden with their vehicle)
+        for (Entity passenger : new ArrayList<>(this.passengers)) {
+            if (passenger instanceof ItemDisplayEntity display && display.culled != culled) display.setCulled(culled);
+        }
     }
 
     @Override
@@ -425,6 +479,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     }
 
     private Kind wantedKind() {
+        if (culled) return Kind.HIDDEN;
         if (!showsBlock()) return Kind.ITEM_RIG;
         if (needHide) return Kind.HIDDEN;
 
@@ -1171,7 +1226,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         // client), not a spawn or respawn, not a far jump (a real teleport)
         boolean glide = !teleported && valid && teleportDuration > 1 && drawnPos != null && vehicle == null
                 && drawnPos.distanceSquared(position) < 64 * 64;
-        if (!teleported && valid && drawnPos != null && drawnPos.distanceSquared(position) > 1.0E-6f) becameMover();
+        if (!teleported && drawnPos != null && drawnPos.distanceSquared(position) > 1.0E-6f) becameMover();
         if (glide) {
             glideFromPos = drawnPos;
             glideFromYaw = drawnYaw;
@@ -1183,7 +1238,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
             renderPos = position;
             renderYaw = yaw;
             renderPitch = pitch;
-            sendRenderedMove(teleported);
+            if (valid) sendRenderedMove(teleported);
         }
 
         // The entity's yaw and pitch are part of the block kinds' transform

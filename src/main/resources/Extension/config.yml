@@ -30,6 +30,12 @@ block-displays:
 text-displays:
   max-distance: 10
 
+# Block and item displays: a Bedrock player (a phone especially) slows down with many of them in view. Don't show one
+# farther than its Java view range (view_range x 64 blocks, what a Java client does), nor than max-distance (0: no cap)
+displays:
+  use-view-range: true
+  max-distance: 48
+
 # Invisible item types
 hide-types:
   - "minecraft:leather_horse_armor"

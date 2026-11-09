@@ -17,6 +17,7 @@ import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.util.MathUtils;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ByteEntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.FloatEntityMetadata;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.IntEntityMetadata;
 
 import static me.geyserextensionists.geyserdisplayentity.GeyserDisplayEntity.MAX_VALUE;
@@ -50,6 +51,8 @@ public class SlotDisplayEntity extends Entity {
     // ItemDisplayEntity: the proxy for the position, the pack for the transform).
     protected int teleportDuration = 0;
     protected int transformDuration = 0;
+    // MineQuack: Java draws a display up to view_range x 64 blocks away (the hub's /vue sets it); Bedrock ignores it
+    protected float viewRange = 1f;
 
     public SlotDisplayEntity(EntitySpawnContext entitySpawnContext) {
         super(entitySpawnContext);
@@ -61,6 +64,10 @@ public class SlotDisplayEntity extends Entity {
 
     public void setTransformDuration(IntEntityMetadata entityMetadata) {
         this.transformDuration = Math.max(0, entityMetadata.getPrimitiveValue());
+    }
+
+    public void setViewRange(FloatEntityMetadata entityMetadata) {
+        this.viewRange = Math.max(0f, entityMetadata.getPrimitiveValue());
     }
 
     public void updateMainHand(GeyserSession session) {

@@ -31,6 +31,8 @@ public class ConfigManager {
     private boolean drawItemFrames = false;
 
     private double textMaxDistance = 10;
+    private double displayMaxDistance = 48;
+    private boolean displayUseViewRange = true;
 
     public ConfigManager(GeyserDisplayEntity extension) {
         this.extension = extension;
@@ -57,6 +59,10 @@ public class ConfigManager {
 
         // MineQuack: Bedrock players don't see a text display farther than this (blocks, 0 = always); 10 if unset
         this.textMaxDistance = config.contains("text-displays.max-distance") ? config.getDouble("text-displays.max-distance") : 10;
+        // MineQuack: and no block or item display farther than its Java view range (view_range x 64), nor than this
+        // (blocks, 0 = no cap); 48 and the view range if unset
+        this.displayMaxDistance = config.contains("displays.max-distance") ? config.getDouble("displays.max-distance") : 48;
+        this.displayUseViewRange = !config.contains("displays.use-view-range") || config.getBoolean("displays.use-view-range");
 
         if (!Files.exists(GeyserDisplayEntity.getExtension().dataFolder().resolve("Entities"))) {
             FileUtils.createFiles(GeyserDisplayEntity.getExtension(), "Entities/item-displays.yml");
@@ -160,5 +166,13 @@ public class ConfigManager {
 
     public double getTextMaxDistance() {
         return textMaxDistance;
+    }
+
+    public double getDisplayMaxDistance() {
+        return displayMaxDistance;
+    }
+
+    public boolean isDisplayUseViewRange() {
+        return displayUseViewRange;
     }
 }

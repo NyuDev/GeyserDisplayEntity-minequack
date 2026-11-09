@@ -13,7 +13,8 @@ Geyser les ignore : Bedrock n'a pas ces entités. Cette version est celle du ré
 | Objet d'un bloc vanilla (laine, dalle…) | Comme un bloc. |
 | Objet plat vanilla (épée, flèche, poisson…) | Une plaque d'un pixel d'épaisseur avec la texture de l'objet, placée comme Java (`item/generated`, `item/handheld`). Une seule face, vue des deux côtés : de dos, l'objet est retourné, comme en Java. |
 | Coffre (dessiné en Java par un rendu à part, sans modèle de bloc) | Une boîte de 14 × 14 × 14 pixels, avec la texture la plus proche (planches, obsidienne, cuivre). |
-| `text_display` | Traduit par Geyser (un nametag). Cette version tourne son décalage (`translation`) avec le lacet du display, comme Java, et le cache à un joueur Bedrock qui en est à plus de `text-displays.max-distance` blocs (10 par défaut, 0 = jamais). |
+| `text_display` | Traduit par Geyser (un nametag). Cette version tourne son décalage (`translation`) avec le lacet du display, comme Java, et le cache à un joueur Bedrock qui en est à plus de `text-displays.max-distance` blocs (10 par défaut, 0 = jamais). Un script peut lui donner un autre aspect sur Bedrock par son nom personnalisé, que Java ne montre pas tant que `custom_name_visible` est faux : `bedrock:hide` le cache, `bedrock:<texte>` (couleurs en `§`) le remplace. |
+| Pot de fleurs (`flower_pot`, `potted_*`) | La boîte extérieure du pot (terre cuite autour, terre dessus), au lieu du seul cube de terre. |
 
 ### Glissement (manèges, canards, ballons)
 
@@ -31,6 +32,10 @@ Java assoit un joueur 0,6 bloc sous le display qu'il monte (un display n'a pas d
 Un display qui monte un display qui bouge (cabines d'une grande roue) est dessiné en cube et non en `falling_block` : Bedrock fait dériver un `falling_block` passager d'un véhicule en mouvement.
 
 Bedrock tourne un passager avec son véhicule, et le corps d'une entité y suit sa tête avec du retard, puis la rattrape d'un coup. Un `item_display` vide qui porte des blocs (la racine d'une figure de carrousel) garde donc sur Bedrock une rotation nulle : ses blocs ont déjà leur propre lacet dans le cube, ils ne tournent plus deux fois et ne pivotent plus d'un coup.
+
+### Distance d'affichage (Bedrock)
+
+Un client Bedrock, un téléphone surtout, ralentit avec beaucoup de displays en vue, et il ignore `view_range`. Cette version ne lui envoie pas un `block_display` ou un `item_display` plus loin que Java ne le dessinerait (`view_range` × 64 blocs, `displays.use-view-range`), ni plus loin que `displays.max-distance` (48 par défaut, 0 = sans limite). Un groupe (un display et les displays qui le montent : une figure de carrousel) se décide d'un bloc, d'après celui qui porte les autres, avec la plus grande portée du groupe. Décidées pièce par pièce, à des moments différents, les pièces d'un manège qui tourne se séparaient près de la limite. Un groupe qui bouge a une marge de 8 blocs (2 sinon).
 
 ### Limites
 
@@ -70,6 +75,13 @@ Ce code est une œuvre dérivée, sous la même licence ([LICENSE](LICENSE), GNU
 **Modifié par MineQuack le 09/11/2026, version minequack.6 :**
 - `ItemDisplayEntity` : rotation nulle sur Bedrock pour un `item_display` vide (voir « Passagers ») ;
 - `TurnedTextDisplayEntity`, `ConfigManager`, `config.yml` : textes cachés au-delà de `text-displays.max-distance` blocs.
+
+**Modifié par MineQuack le 09/11/2026, version minequack.7 :**
+- `SlotDisplayEntity`, `GeyserDisplayEntity` : lecture de `view_range` ; `ItemDisplayEntity`, `ConfigManager`, `config.yml` : distance d'affichage (voir plus haut) ;
+- `TurnedTextDisplayEntity` : noms `bedrock:hide` / `bedrock:<texte>` ;
+- `block_render.tsv` : boîte extérieure des pots de fleurs (`tools/pot_shape.py`).
+
+**Modifié par MineQuack le 09/11/2026, version minequack.8 :** distance d'affichage décidée par groupe, marge plus large pour ce qui bouge (`ItemDisplayEntity`).
 
 ## Construire
 
