@@ -28,6 +28,7 @@ import org.geysermc.geyser.entity.properties.type.IntProperty;
 import org.geysermc.geyser.entity.spawn.EntitySpawnContext;
 import org.geysermc.geyser.entity.type.Entity;
 import org.geysermc.geyser.entity.type.Tickable;
+import org.geysermc.geyser.entity.type.player.PlayerEntity;
 import org.geysermc.geyser.entity.vehicle.ClientVehicle;
 import org.geysermc.geyser.item.Items;
 import org.geysermc.geyser.registry.type.ItemMapping;
@@ -138,6 +139,12 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     private float headSizeFrom;
     private int headGlideStep;
     private int headGlideSteps;
+    private boolean itemShapeIsStandIn;
+    // The cube's rotation angles as last sent (see closestAngles)
+    private Vector3f sentLeft;
+    private Vector3f sentRight;
+    // (banc seulement : -Dgde.debugMoves=true)
+    private static final boolean DEBUG_MOVES = Boolean.getBoolean("gde.debugMoves");
 
     public ItemDisplayEntity(EntitySpawnContext entitySpawnContext) {
         super(entitySpawnContext);
@@ -149,6 +156,8 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         // (a spawn shows the display where it is, without gliding)
         cubeGlideTicks = 0;
         glideSteps = 0;
+        sentLeft = null;
+        sentRight = null;
         kind = wantedKind();
         applyKind();
         spawnAsKind();
@@ -219,6 +228,10 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
      * which a respawn as another kind does, and a link sent before a block display's deferred spawn never arrives.
      */
     private void relink() {
+        if (DEBUG_MOVES) {
+            GeyserDisplayEntity.getExtension().logger().info("relink id=" + entityId + " kind=" + kind + " vehicle="
+                    + (vehicle == null ? "-" : vehicle.getEntityId()) + " passengers=" + passengers.size());
+        }
         if (vehicle != null && vehicle.isValid()) link(vehicle, this);
         for (Entity passenger : passengers) {
             if (passenger == null || !passenger.isValid()) continue;
@@ -243,12 +256,61 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
             position = vehicle.getPosition().add(bedrockPosition().sub(this.position)).sub(vehicle.bedrockPosition());
         }
         super.setRiderSeatPosition(position);
+        // MineQuack: now riding something that moves, a falling block becomes a cube (see ridesMover)
+        if (valid && kind != null && kind != wantedKind()) respawn();
+    }
+
+    // MineQuack: the first time this display moves, its riders that are falling blocks become cubes
+    private void becameMover() {
+        if (mover) return;
+        mover = true;
+        for (Entity passenger : new ArrayList<>(passengers)) {
+            if (passenger instanceof ItemDisplayEntity display && display.isValid() && display.kind != display.wantedKind()) {
+                display.respawn();
+            }
+        }
     }
 
     private void updateSeat() {
         if (!(vehicle instanceof SlotDisplayEntity)) return;
         setRiderSeatPosition(Vector3f.ZERO);
         super.updateBedrockMetadata();
+    }
+
+    // MineQuack: Geyser seats a player riding an unknown vehicle at 3/4 of its height (1.7 here), about a block too high
+    // (measured on a Bedrock client: eyes at +2.03 instead of +1.02). Java seats a player 0.6 below a display's position
+    // (a display has no size). Bedrock puts a rider's position at the vehicle's drawn position plus the seat offset, and
+    // a Bedrock player's position is its eyes (Geyser's player offset, 1.62)
+    private static final float JAVA_PLAYER_RIDING_OFFSET = 0.6f;
+
+    private void placeRiders() {
+        float seat = position.getY() - bedrockPosition().getY() - JAVA_PLAYER_RIDING_OFFSET + VanillaEntities.PLAYER.offset();
+        // A correction in blocks if a Bedrock version seats players differently (config general.rider-seat-offset)
+        try {
+            seat += (float) GeyserDisplayEntity.getExtension().getConfigManager().getConfig().getDouble("general.rider-seat-offset");
+        } catch (Throwable ignored) {
+        }
+        for (Entity passenger : passengers) {
+            if (!(passenger instanceof PlayerEntity) || !passenger.isValid()) continue;
+            if (DEBUG_MOVES) {
+                GeyserDisplayEntity.getExtension().logger().info("seat id=" + entityId + " rider=" + passenger.getEntityId() + " y=" + seat);
+            }
+            passenger.setRiderSeatPosition(Vector3f.from(0, seat, 0));
+            passenger.updateBedrockMetadata();
+        }
+    }
+
+    // Geyser's mount packet seats the riders, then hands the vehicle its new passengers
+    @Override
+    public void setPassengers(List<Entity> passengers) {
+        super.setPassengers(passengers);
+        placeRiders();
+    }
+
+    @Override
+    protected void updatePassengerOffsets() {
+        super.updatePassengerOffsets();
+        placeRiders();
     }
 
     protected void respawn() {
@@ -338,6 +400,22 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         return itemBlock;
     }
 
+    /**
+     * MineQuack: whether the cube's shape stands in for a block Bedrock can't draw as a falling block (chests).
+     */
+    protected boolean cubeIsStandIn() {
+        return itemShapeIsStandIn;
+    }
+
+    // MineQuack: a display that moves (it glides, or the server has moved it)
+    private boolean mover;
+
+    // MineQuack: Bedrock does not carry a falling block on a moving vehicle the way it carries the cube: the plain
+    // blocks of a Ferris wheel cabin drifted away from the rest. On a vehicle that moves, everything is a cube
+    private boolean ridesMover() {
+        return vehicle instanceof ItemDisplayEntity carrier && (carrier.teleportDuration > 0 || carrier.mover);
+    }
+
     private Kind wantedKind() {
         if (!showsBlock()) return Kind.ITEM_RIG;
         if (needHide) return Kind.HIDDEN;
@@ -346,12 +424,20 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         Vector3f size = javaScale.mul(modelScale());
         boolean fullSize = Math.abs(size.getX() - 1) < 1e-3f && Math.abs(size.getY() - 1) < 1e-3f && Math.abs(size.getZ() - 1) < 1e-3f;
         Quaternionf rotation = orientation().mul(javaLeftRotation).mul(javaRightRotation).mul(fallingRotation()).normalize();
-        boolean plain = fullSize && Math.abs(rotation.getW()) > 0.99999f && fallingBlockDefinition() != null;
-        if (plain && !GeyserDisplayEntity.getExtension().getConfigManager().isForceCube()) return Kind.FALLING_BLOCK;
+        boolean plain = fullSize && Math.abs(rotation.getW()) > 0.99999f && fallingBlockDefinition() != null && !cubeIsStandIn();
+        boolean preferCube = cubeShape() != null && ridesMover();
+        if (plain && !preferCube && !GeyserDisplayEntity.getExtension().getConfigManager().isForceCube()) return Kind.FALLING_BLOCK;
 
         if (cubeShape() != null) return Kind.BLOCK_CUBE;
         // Blocks without a model box (chests, signs, ...) can only be shown plain
-        return plain ? Kind.FALLING_BLOCK : Kind.HIDDEN;
+        if (plain) return Kind.FALLING_BLOCK;
+        // MineQuack: an item display of such a block (the daily chest) is better held by the item rig, which draws
+        // Bedrock's own 3D item, than hidden
+        return rigCanDrawItem() ? Kind.ITEM_RIG : Kind.HIDDEN;
+    }
+
+    protected boolean rigCanDrawItem() {
+        return item != null && item != ItemData.AIR && item.getDefinition() != null;
     }
 
     private void applyKind() {
@@ -519,6 +605,8 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
 
     // Display transforms of vanilla's block/block.json, the parent of every block item model
     private ModelTransform modelTransform() {
+        BlockShapes.Shape shape = cubeShape();
+        if (shape != null && shape.flat()) return flatModelTransform(shape.handheld());
         return switch (displayType) {
             case FIXED -> ModelTransform.of(0, 0, 0, 0, 0, 0, 0.5f);
             case GROUND -> ModelTransform.of(0, 3, 0, 0, 0, 0, 0.25f);
@@ -527,6 +615,22 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
             case FIRST_PERSON_RIGHT_HAND -> ModelTransform.of(0, 0, 0, 0, 45, 0, 0.4f);
             case FIRST_PERSON_LEFT_HAND -> ModelTransform.of(0, 0, 0, 0, 225, 0, 0.4f);
             case NONE, HEAD -> ModelTransform.of(0, 0, 0, 0, 0, 0, 1f);
+        };
+    }
+
+    // MineQuack: display transforms of vanilla's item/generated.json (flat items) and item/handheld.json (tools)
+    private ModelTransform flatModelTransform(boolean handheld) {
+        return switch (displayType) {
+            case GROUND -> ModelTransform.of(0, 2, 0, 0, 0, 0, 0.5f);
+            case HEAD -> ModelTransform.of(0, 13, 7, 0, 180, 0, 1f);
+            case FIXED -> ModelTransform.of(0, 0, 0, 0, 180, 0, 1f);
+            case THIRD_PERSON_RIGHT_HAND -> handheld ? ModelTransform.of(0, 4, 0.5f, 0, -90, 55, 0.85f)
+                    : ModelTransform.of(0, 3, 1, 0, 0, 0, 0.55f);
+            case THIRD_PERSON_LEFT_HAND -> handheld ? ModelTransform.of(0, 4, 0.5f, 0, 90, -55, 0.85f)
+                    : ModelTransform.of(0, 3, 1, 0, 0, 0, 0.55f);
+            case FIRST_PERSON_RIGHT_HAND -> ModelTransform.of(1.13f, 3.2f, 1.13f, 0, -90, 25, 0.68f);
+            case FIRST_PERSON_LEFT_HAND -> ModelTransform.of(1.13f, 3.2f, 1.13f, 0, 90, -25, 0.68f);
+            case NONE, GUI -> ModelTransform.of(0, 0, 0, 0, 0, 0, 1f);
         };
     }
 
@@ -554,7 +658,10 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         setFloat("geyser:t_y", position.getY() * 16);
         setFloat("geyser:t_z", -position.getZ() * 16);
 
-        Vector3f left = toBedrockEuler(orientation().mul(javaLeftRotation));
+        // MineQuack: the same rotation has two sets of angles; keep the one closest to what was sent, or the pack's
+        // glide between them spins the piece right round
+        Vector3f left = closestAngles(toBedrockEuler(orientation().mul(javaLeftRotation)), sentLeft);
+        sentLeft = left;
         setFloat("geyser:r_x", left.getX());
         setFloat("geyser:r_y", left.getY());
         setFloat("geyser:r_z", left.getZ());
@@ -564,7 +671,8 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         setFloat("geyser:s_y", scale.getY());
         setFloat("geyser:s_z", scale.getZ());
 
-        Vector3f right = toBedrockEuler(javaRightRotation.mul(modelRotation()));
+        Vector3f right = closestAngles(toBedrockEuler(javaRightRotation.mul(modelRotation())), sentRight);
+        sentRight = right;
         setFloat(RIGHT_ROTATION_X, right.getX());
         setFloat(RIGHT_ROTATION_Y, right.getY());
         setFloat(RIGHT_ROTATION_Z, right.getZ());
@@ -584,6 +692,20 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         Quaternionf model = MODEL_SPACE.mul(javaRotation).mul(MODEL_SPACE.invert());
         Vector3f euler = toEulerZYX(model);
         return Vector3f.from(-euler.getX(), -euler.getY(), euler.getZ());
+    }
+
+    // MineQuack: Z*Y*X angles (x, y, z) and (x + 180, 180 - y, z + 180) are the same rotation; in the bone convention
+    // above (X and Y negated) the second is (x + 180, -y - 180, z + 180). Keep the set closest to the last one sent
+    private static Vector3f closestAngles(Vector3f angles, Vector3f last) {
+        if (last == null) return angles;
+        Vector3f other = Vector3f.from(MathUtils.wrapDegrees(angles.getX() + 180f), MathUtils.wrapDegrees(-angles.getY() - 180f),
+                MathUtils.wrapDegrees(angles.getZ() + 180f));
+        return angleGap(other, last) < angleGap(angles, last) ? other : angles;
+    }
+
+    private static float angleGap(Vector3f a, Vector3f b) {
+        return Math.abs(MathUtils.wrapDegrees(a.getX() - b.getX())) + Math.abs(MathUtils.wrapDegrees(a.getY() - b.getY()))
+                + Math.abs(MathUtils.wrapDegrees(a.getZ() - b.getZ()));
     }
 
     private void setFloat(String id, float value) {
@@ -713,13 +835,20 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         this.itemBlock = itemMapping.isBlock() ? itemMapping.getBedrockBlockDefinition() : null;
         String javaID = itemMapping.getJavaItem().javaKey().asString();
         this.itemShape = BlockShapes.forItem(javaID);
+        // MineQuack: a chest item gets a chest-sized stand-in box (the daily chest)
+        this.itemShapeIsStandIn = false;
+        if (this.itemShape == null) {
+            this.itemShape = BlockShapes.standIn(javaID);
+            this.itemShapeIsStandIn = this.itemShape != null;
+        }
         boolean wasHiddenByType = needHide;
 
         ConfigManager cfg = GeyserDisplayEntity.getExtension().getConfigManager();
         boolean hiddenByType = cfg.getHideTypes().contains(javaID);
         boolean forceHiddenCustomType = cfg.getHideCustomTypes().contains(javaID);
         // A plain block item is drawn as the block itself, so only hide it when it carries a custom model
-        boolean plainBlock = itemBlock != null && (data == null
+        // MineQuack: a flat vanilla item (fish, sword, arrow...) is drawn by the cube too, as a one pixel thick plate
+        boolean plainBlock = (itemBlock != null || itemShape != null) && (data == null
                 || (data.get(DataComponentTypes.ITEM_MODEL) == null && data.get(DataComponentTypes.CUSTOM_MODEL_DATA) == null));
         boolean unmappedVanilla = hidesUnmappedVanilla(cfg) && !custom && !mappingApplied
                 && !(plainBlock && cfg.isShowPlainVanillaBlocks());
@@ -1010,6 +1139,10 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
 
     @Override
     public void moveAbsoluteRaw(Vector3f position, float yaw, float pitch, float headYaw, boolean isOnGround, boolean teleported) {
+        if (DEBUG_MOVES) {
+            GeyserDisplayEntity.getExtension().logger().info("move id=" + entityId + " kind=" + kind + " rider=" + (vehicle != null)
+                    + " tp=" + teleported + " pos=" + position + " yaw=" + yaw);
+        }
         // Where Bedrock draws it now (moveRelativeRaw has already changed this.position)
         Vector3f drawnPos = renderPos;
         float drawnYaw = renderYaw;
@@ -1025,6 +1158,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         // client), not a spawn or respawn, not a far jump (a real teleport)
         boolean glide = !teleported && valid && teleportDuration > 1 && drawnPos != null && vehicle == null
                 && drawnPos.distanceSquared(position) < 64 * 64;
+        if (!teleported && valid && drawnPos != null && drawnPos.distanceSquared(position) > 1.0E-6f) becameMover();
         if (glide) {
             glideFromPos = drawnPos;
             glideFromYaw = drawnYaw;

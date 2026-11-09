@@ -25,7 +25,10 @@ public final class BlockShapes {
      * @param faces   texture index per face, in the order north, south, east, west, up, down; -1 draws no face
      * @param translucent whether any face needs blending (stained glass, ice, ...)
      */
-    public record Shape(float[] from, float[] to, int[] faces, boolean translucent) {
+    public record Shape(float[] from, float[] to, int[] faces, boolean translucent, boolean flat, boolean handheld) {
+        public Shape(float[] from, float[] to, int[] faces, boolean translucent) {
+            this(from, to, faces, translucent, false, false);
+        }
     }
 
     private record Rule(List<Map<String, String[]>> alternatives, int shape) {
@@ -69,7 +72,9 @@ public final class BlockShapes {
                         float[] to = {Float.parseFloat(cols[5]), Float.parseFloat(cols[6]), Float.parseFloat(cols[7])};
                         int[] faces = new int[6];
                         for (int i = 0; i < 6; i++) faces[i] = Integer.parseInt(cols[8 + i]);
-                        shapes.add(new Shape(from, to, faces, (Integer.parseInt(cols[14]) & 1) != 0));
+                        int flags = Integer.parseInt(cols[14]);
+                        // MineQuack: 4 = a flat item (item/generated), 8 = held like a tool (item/handheld)
+                        shapes.add(new Shape(from, to, faces, (flags & 1) != 0, (flags & 4) != 0, (flags & 8) != 0));
                     }
                     case "variant" -> blocks.computeIfAbsent(cols[1], k -> new ArrayList<>())
                             .add(new Rule(List.of(parseCondition(cols[2], ",")), Integer.parseInt(cols[3])));
@@ -127,5 +132,40 @@ public final class BlockShapes {
     public static Shape forItem(String javaItem) {
         Integer index = items.get(javaItem);
         return index == null ? null : shapes.get(index);
+    }
+
+    // MineQuack: chests have no model box (an entity renderer draws them) and Bedrock draws no falling chest. Stand in a
+    // chest-sized box (14 x 14 x 14 pixels) with the texture of the closest block
+    private static final Map<String, String> CHEST_STAND_INS = Map.ofEntries(
+            Map.entry("minecraft:chest", "minecraft:oak_planks"),
+            Map.entry("minecraft:trapped_chest", "minecraft:oak_planks"),
+            Map.entry("minecraft:ender_chest", "minecraft:obsidian"),
+            Map.entry("minecraft:copper_chest", "minecraft:copper_block"),
+            Map.entry("minecraft:exposed_copper_chest", "minecraft:exposed_copper"),
+            Map.entry("minecraft:weathered_copper_chest", "minecraft:weathered_copper"),
+            Map.entry("minecraft:oxidized_copper_chest", "minecraft:oxidized_copper"),
+            Map.entry("minecraft:waxed_copper_chest", "minecraft:copper_block"),
+            Map.entry("minecraft:waxed_exposed_copper_chest", "minecraft:exposed_copper"),
+            Map.entry("minecraft:waxed_weathered_copper_chest", "minecraft:weathered_copper"),
+            Map.entry("minecraft:waxed_oxidized_copper_chest", "minecraft:oxidized_copper"));
+
+    /**
+     * A stand-in box for a block or block item with no model box (chests), or null.
+     */
+    public static Shape standIn(String javaBlockOrItem) {
+        String texture = CHEST_STAND_INS.get(javaBlockOrItem);
+        if (texture == null) return null;
+        Shape like = forItem(texture);
+        if (like == null) return null;
+        return new Shape(new float[]{1, 0, 1}, new float[]{15, 14, 15}, like.faces(), like.translucent());
+    }
+
+    /**
+     * The id of a block state without its properties ("minecraft:chest[facing=north]" gives "minecraft:chest").
+     */
+    public static String blockId(int javaId) {
+        String state = BlockState.of(javaId).toString();
+        int bracket = state.indexOf('[');
+        return bracket < 0 ? state : state.substring(0, bracket);
     }
 }

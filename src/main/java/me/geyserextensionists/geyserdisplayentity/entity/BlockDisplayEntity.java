@@ -26,6 +26,7 @@ public class BlockDisplayEntity extends ItemDisplayEntity {
 
     private BlockDefinition block;
     private BlockShapes.Shape shape;
+    private boolean standIn;
 
     // Bedrock spawn waits for the first metadata, so the entity is created as the right kind straight away
     private boolean metadataReceived;
@@ -33,6 +34,12 @@ public class BlockDisplayEntity extends ItemDisplayEntity {
 
     public BlockDisplayEntity(EntitySpawnContext entitySpawnContext) {
         super(entitySpawnContext);
+    }
+
+    // MineQuack: geyser:block_display has no item rig to hold the item with
+    @Override
+    protected boolean rigCanDrawItem() {
+        return false;
     }
 
     @Override
@@ -62,6 +69,12 @@ public class BlockDisplayEntity extends ItemDisplayEntity {
         // rotation, so send the state turned half a turn to cancel it out
         block = session.getBlockMappings().getBedrockBlock(halfTurn(state).javaId());
         shape = BlockShapes.forState(javaId);
+        // MineQuack: a chest gets a chest-sized stand-in box (Bedrock draws no falling chest)
+        standIn = false;
+        if (shape == null) {
+            shape = BlockShapes.standIn(BlockShapes.blockId(javaId));
+            standIn = shape != null;
+        }
 
         // The item only feeds the hide-types check; blocks without an item form (fire, water, ...) skip it
         Item item = state.block().asItem();
@@ -108,6 +121,11 @@ public class BlockDisplayEntity extends ItemDisplayEntity {
     @Override
     protected BlockShapes.Shape cubeShape() {
         return shape;
+    }
+
+    @Override
+    protected boolean cubeIsStandIn() {
+        return standIn;
     }
 
     // The block model fills the block from its corner, with no item transform

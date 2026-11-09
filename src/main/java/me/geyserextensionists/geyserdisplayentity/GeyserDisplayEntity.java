@@ -4,6 +4,7 @@ import me.geyserextensionists.geyserdisplayentity.entity.BlockDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.entity.FurnitureFrameEntity;
 import me.geyserextensionists.geyserdisplayentity.entity.ItemDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.entity.SlotDisplayEntity;
+import me.geyserextensionists.geyserdisplayentity.entity.TurnedTextDisplayEntity;
 import me.geyserextensionists.geyserdisplayentity.managers.ConfigManager;
 import me.geyserextensionists.geyserdisplayentity.util.BlockShapes;
 import me.geyserextensionists.geyserdisplayentity.util.DisplayTransforms;
@@ -149,6 +150,17 @@ public class GeyserDisplayEntity implements Extension {
             }
         } catch (Throwable err) {
             logger().error("Error in load", err);
+        }
+
+        // MineQuack: Geyser's own text displays, with their translation turned by the yaw (see TurnedTextDisplayEntity).
+        // The registry refuses a second definition, so swap the factory of Geyser's one
+        try {
+            java.lang.reflect.Field factory = EntityTypeDefinition.class.getDeclaredField("factory");
+            factory.setAccessible(true);
+            factory.set(VanillaEntities.TEXT_DISPLAY, (org.geysermc.geyser.entity.factory.EntityFactory<TurnedTextDisplayEntity>) TurnedTextDisplayEntity::new);
+            logger().info("Text displays: translation turned by the yaw");
+        } catch (Throwable err) {
+            logger().warning("Couldn't turn text display translations (Geyser's own text displays kept): " + err);
         }
 
         logger().info("Done");

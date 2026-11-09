@@ -1,12 +1,28 @@
-"""Ajoute au pack GeyserDisplayEntity le glissement du cube de bloc (geyser:i_dur) et change sa version.
+"""Ajoute au pack GeyserDisplayEntity le glissement du cube de bloc (geyser:i_dur), le texte « pour descendre »
+des entites du pack, et change sa version.
 
-Usage : python -I patch_pack.py <pack d'origine.mcpack> <pack sortie.mcpack>
+Usage : python -I patch_pack.py <pack d'origine.mcpack> <pack sortie.mcpack> [version, ex. 1.944.0]
 """
 import json
 import sys
 import zipfile
 
 SRC, DST = sys.argv[1], sys.argv[2]
+VERSION = [int(x) for x in sys.argv[3].split('.')] if len(sys.argv) > 3 else None
+
+# Bedrock affiche action.hint.exit.<entite> quand on monte sur une entite ; sans texte, la cle brute
+HINT = {
+    'fr_FR': 'Accroupis-toi pour descendre',
+    'fr_CA': 'Accroupis-toi pour descendre',
+    'en_US': 'Sneak to get off',
+    'en_GB': 'Sneak to get off',
+}
+LANG_FILES = {
+    'texts/%s.lang' % lang: ''.join('action.hint.exit.%s=%s\n' % (e, text)
+                                     for e in ('geyser:item_display', 'geyser:block_display')).encode()
+    for lang, text in HINT.items()
+}
+LANG_FILES['texts/languages.json'] = json.dumps(sorted(HINT)).encode()
 
 # (variable, propriete, angle ?)
 FIELDS = [
@@ -67,7 +83,7 @@ def patch_entity(data):
 def patch_manifest(data):
     man = json.loads(data)
     v = man['header']['version']
-    nv = [v[0], v[1] + 1, 0]
+    nv = VERSION or [v[0], v[1] + 1, 0]
     man['header']['version'] = nv
     for m in man['modules']:
         m['version'] = nv
@@ -86,8 +102,14 @@ with zipfile.ZipFile(SRC) as zin, zipfile.ZipFile(DST, 'w', zipfile.ZIP_DEFLATED
             data = patch_entity(data); done.add(name)
         elif name == 'manifest.json':
             data = patch_manifest(data); done.add(name)
+        if name in LANG_FILES:
+            continue
         out = zipfile.ZipInfo(name, date_time=info.date_time)
         out.compress_type = zipfile.ZIP_DEFLATED
         zout.writestr(out, data)
-print('fichiers modifies :', sorted(done))
+    for name, data in LANG_FILES.items():
+        out = zipfile.ZipInfo(name, date_time=(2024, 1, 1, 0, 0, 0))
+        out.compress_type = zipfile.ZIP_DEFLATED
+        zout.writestr(out, data)
+print('fichiers modifies :', sorted(done), '+ textes :', sorted(LANG_FILES))
 assert len(done) == 4, done

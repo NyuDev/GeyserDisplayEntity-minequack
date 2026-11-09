@@ -7,7 +7,7 @@ set -euo pipefail
 GEYSER="$1"
 VELOCITY="$2"
 PACK="$3"
-VERSION="${4:-1.0.15-minequack.2}"
+VERSION="${4:-1.0.15-minequack.5}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 B="$ROOT/build-minequack"
