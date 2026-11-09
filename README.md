@@ -14,12 +14,20 @@ Geyser les ignore : Bedrock n'a pas ces entités. Cette version est celle du ré
 | Objet plat vanilla (épée, flèche…) | Caché, sauf s'il a une correspondance dans `Mappings/`. |
 | `text_display` | Non touché : c'est Geyser qui le traduit. |
 
+### Glissement (manèges, canards, ballons)
+
+Java ne déplace pas un display d'un coup : le client glisse vers la nouvelle position pendant `teleport_duration` ticks, et vers la nouvelle transformation pendant `interpolation_duration` ticks. Un manège qui n'envoie sa position que tous les 10 ou 20 ticks reste donc fluide sur Java. Bedrock ne connaît pas ces durées : sans rien faire, la pièce saute d'un coup, et une pièce tournée en avance pour compenser le glissement reste en biais.
+
+Cette version reproduit le glissement :
+- **Position** : pour un display qui n'est passager de rien, le proxy envoie la position intermédiaire à chaque tick, pendant `teleport_duration`. Ses passagers suivent sur le client.
+- **Rotation et transformation du cube** : la propriété `geyser:i_dur` donne au pack la durée du glissement. Le pack passe d'une valeur à l'autre de façon linéaire, avec `math.lerprotate` pour les angles. Cela ne coûte aucun paquet en plus.
+- **Têtes de joueur** : elles glissent aussi (position, lacet, taille), à chaque tick.
+
 ### Limites
 
 - Escaliers, portes, barrières reliées : seule la plus grosse boîte est dessinée.
 - Coffres, panneaux, têtes de mob (creeper, zombie…) : visibles seulement s'ils sont simples.
 - Les rotations internes d'un modèle (fleurs en croix) ne sont pas appliquées. Les blocs teintés prennent la couleur des plaines.
-- L'interpolation Java n'est pas reproduite : un display qui glisse avance par à-coups.
 - Les cadres d'objets « meubles » du fork d'origine sont coupés. Ils passaient par un registre que Geyser 2.12 b1278 a retiré.
 
 ## Origine et modifications (AGPL-3.0, article 5)
@@ -34,6 +42,10 @@ Ce code est une œuvre dérivée, sous la même licence ([LICENSE](LICENSE), GNU
 - têtes de joueur greffées dans le système de « genres » du fork : `placeHead` lit la transformation Java brute ;
 - Geyser 2.12 b1278 et plus récent : `build(false)` pour un genre non dessiné, et cadres d'objets coupés ;
 - construction sans Gradle, avec `tools/build-minequack.sh`.
+
+**Modifié par MineQuack le 09/11/2026, version minequack.2 :** glissement des positions, des rotations et des transformations (voir plus haut) :
+- `ItemDisplayEntity` et `SlotDisplayEntity` : lecture de `teleport_duration` et de `interpolation_duration` ;
+- pack (`pack/animations/geyser_block.animation.json`, `pack/entity/*.json`) : glissement du cube, appliqué au pack construit par `tools/patch_pack.py`, qui change aussi sa version.
 
 ## Construire
 

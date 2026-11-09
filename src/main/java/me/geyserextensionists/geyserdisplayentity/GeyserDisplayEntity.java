@@ -109,8 +109,8 @@ public class GeyserDisplayEntity implements Extension {
 
             EntityTypeBase<SlotDisplayEntity> slotDisplayBase = EntityTypeBase.baseInherited(SlotDisplayEntity.class, entityBase)
                     .addTranslator(null) // Interpolation start ticks
-                    .addTranslator(null) // Interpolation duration ID
-                    .addTranslator(null) // Position/Rotation interpolation duration
+                    .addTranslator(MetadataTypes.INT, SlotDisplayEntity::setTransformDuration) // Interpolation duration ID
+                    .addTranslator(MetadataTypes.INT, SlotDisplayEntity::setTeleportDuration) // Position/Rotation interpolation duration
                     .addTranslator(MetadataTypes.VECTOR3, SlotDisplayEntity::setTranslation) // Translation
                     .addTranslator(MetadataTypes.VECTOR3, SlotDisplayEntity::setScale) // Scale
                     .addTranslator(MetadataTypes.QUATERNION, SlotDisplayEntity::setLeftRotation) // Left rotation

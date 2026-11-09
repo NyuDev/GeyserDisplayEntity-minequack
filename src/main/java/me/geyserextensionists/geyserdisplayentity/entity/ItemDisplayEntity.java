@@ -115,6 +115,30 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     private Vector3f headPlacedAt;
     private float headFacing;
 
+    // MineQuack: the glide. Java moves a display over teleport_duration ticks; Bedrock only lerps an entity for a
+    // moment, so a carousel that updates every 10 ticks jumped. While gliding, the proxy sends the in-between
+    // position every tick. Only displays that ride nothing: the client carries the riders with their vehicle.
+    // renderPos/renderYaw/renderPitch: what Bedrock shows now (Java coordinates).
+    private Vector3f renderPos;
+    private float renderYaw;
+    private float renderPitch;
+    private Vector3f glideFromPos;
+    private float glideFromYaw;
+    private float glideFromPitch;
+    private int glideStep;
+    private int glideSteps;
+    // Seconds the pack takes to turn the block cube (or the item rig) to the next transform (geyser:i_dur)
+    private int cubeGlideTicks;
+    // The head's transform as drawn (centre in the display's frame, turn, size), and its glide
+    private Vector3f headCentre;
+    private float headTurn;
+    private float headSize;
+    private Vector3f headCentreFrom;
+    private float headTurnFrom;
+    private float headSizeFrom;
+    private int headGlideStep;
+    private int headGlideSteps;
+
     public ItemDisplayEntity(EntitySpawnContext entitySpawnContext) {
         super(entitySpawnContext);
     }
@@ -122,6 +146,9 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     @Override
     public void spawnEntity() {
         if (rigDefinition == null) rigDefinition = bedrockDefinition();
+        // (a spawn shows the display where it is, without gliding)
+        cubeGlideTicks = 0;
+        glideSteps = 0;
         kind = wantedKind();
         applyKind();
         spawnAsKind();
@@ -130,6 +157,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
 
     @Override
     public void despawnEntity() {
+        glideSteps = 0;
         if (head != null) {
             head.despawnEntity();
             head = null;
@@ -139,7 +167,43 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
 
     @Override
     public void tick() {
+        if (glideSteps > 0) glideTick();
         if (head != null) placeHead();
+    }
+
+    // One step of the glide: Java's lerp from where the display was drawn to the latest position
+    private void glideTick() {
+        glideStep++;
+        if (glideStep >= glideSteps || !valid) {
+            glideSteps = 0;
+            renderPos = position;
+            renderYaw = getYaw();
+            renderPitch = getPitch();
+        } else {
+            float k = glideStep / (float) glideSteps;
+            renderPos = glideFromPos.add(position.sub(glideFromPos).mul(k));
+            renderYaw = glideFromYaw + MathUtils.wrapDegrees(getYaw() - glideFromYaw) * k;
+            renderPitch = glideFromPitch + (getPitch() - glideFromPitch) * k;
+        }
+        if (valid) sendRenderedMove(false);
+    }
+
+    // Sends where the display is drawn now: the usual Bedrock position and rotation, shifted to the glide
+    private void sendRenderedMove(boolean teleported) {
+        Vector3f shown = renderPos == null ? position : renderPos;
+        MoveEntityAbsolutePacket moveEntityPacket = new MoveEntityAbsolutePacket();
+        moveEntityPacket.setRuntimeEntityId(geyserId);
+        moveEntityPacket.setPosition(bedrockPosition().add(shown.sub(position)));
+        Vector3f rotation = bedrockRotation();
+        if (kind == null || kind == Kind.ITEM_RIG) {
+            // The item rig turns the whole entity: draw it at the glided yaw
+            float dy = MathUtils.wrapDegrees(renderYaw - getYaw());
+            rotation = Vector3f.from(rotation.getX(), MathUtils.wrapDegrees(rotation.getY() + dy), MathUtils.wrapDegrees(rotation.getZ() + dy));
+        }
+        moveEntityPacket.setRotation(rotation);
+        moveEntityPacket.setOnGround(isOnGround());
+        moveEntityPacket.setTeleported(teleported);
+        session.sendUpstreamPacket(moveEntityPacket);
     }
 
     private void spawnAsKind() {
@@ -217,6 +281,12 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
         if (kind == Kind.FALLING_BLOCK || kind == Kind.HIDDEN) {
             dropProperties();
             return;
+        }
+        // MineQuack: how long the pack glides to these values (0 = at once). Sent with every change, so a later
+        // change without a glide is not slowed by an earlier one
+        if (propertyManager != null && propertyManager.hasProperties()) {
+            setFloat("geyser:i_dur", valid ? cubeGlideTicks / 20f : 0f);
+            cubeGlideTicks = 0;
         }
         super.updateBedrockEntityProperties();
     }
@@ -352,10 +422,28 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     public void setGravity(BooleanEntityMetadata entityMetadata) {
     }
 
+    // A new transformation glides over interpolation_duration ticks, as on Java
+    private void transformChanged() {
+        if (!valid) return;
+        cubeGlideTicks = Math.max(cubeGlideTicks, transformDuration);
+        // The head glides from where it is drawn now (placeHead, every tick). The fields of one change arrive one
+        // after another before the next tick (step still 0): they keep the same start
+        if (head != null && headCentre != null && transformDuration > 1) {
+            if (headGlideSteps == 0 || headGlideStep > 0) {
+                headCentreFrom = headCentre;
+                headTurnFrom = headTurn;
+                headSizeFrom = headSize;
+            }
+            headGlideStep = 0;
+            headGlideSteps = transformDuration;
+        }
+    }
+
     @Override
     public void setTranslation(EntityMetadata<Vector3f, ?> entityMetadata) {
         translationMetadata = entityMetadata;
         javaTranslation = entityMetadata.getValue();
+        transformChanged();
         if (kind == Kind.ITEM_RIG) super.setTranslation(entityMetadata);
     }
 
@@ -363,6 +451,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     public void setScale(EntityMetadata<Vector3f, ?> entityMetadata) {
         scaleMetadata = entityMetadata;
         javaScale = entityMetadata.getValue();
+        transformChanged();
         if (kind != Kind.ITEM_RIG) return;
         super.setScale(entityMetadata);
         if (valid && config != null && config.getBoolean("vanilla-scale")) {
@@ -374,6 +463,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     public void setLeftRotation(EntityMetadata<Quaternionf, ?> entityMetadata) {
         leftRotationMetadata = entityMetadata;
         javaLeftRotation = entityMetadata.getValue();
+        transformChanged();
         if (kind == Kind.ITEM_RIG) super.setLeftRotation(entityMetadata);
     }
 
@@ -381,6 +471,7 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
     public void setRightRotation(EntityMetadata<Quaternionf, ?> entityMetadata) {
         rightRotationMetadata = entityMetadata;
         javaRightRotation = entityMetadata.getValue();
+        transformChanged();
         if (kind == Kind.ITEM_RIG) super.setRightRotation(entityMetadata);
     }
 
@@ -707,24 +798,45 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
 
         Vector3f inner = right.rotate(0, HEAD_CENTRE_Y, 0).mul(javaScale);
         Vector3f centre = left.rotate(inner.getX(), inner.getY(), inner.getZ()).add(javaTranslation);
+        // The face is on the display's -Z: the item model turns the skull over (180 about X) and the item display
+        // turns every item about Y, so a FIXED head looks away from its yaw and a billboarded one away from the viewer
+        Vector3f facing = left.mul(right).rotate(0, 0, -1);
+        float turn = (float) Math.toDegrees(Math.atan2(-facing.getX(), facing.getZ()));
+        float size = (javaScale.getX() + javaScale.getY() + javaScale.getZ()) / 3;
+
+        // MineQuack: a new transformation glides (balloons sway this way), as the block cube does in the pack
+        if (headCentre == null || headGlideSteps <= 0) {
+            headCentre = centre;
+            headTurn = turn;
+            headSize = size;
+            headGlideSteps = 0;
+        } else {
+            headGlideStep++;
+            float k = Math.min(1f, headGlideStep / (float) headGlideSteps);
+            headCentre = headCentreFrom.add(centre.sub(headCentreFrom).mul(k));
+            headTurn = headTurnFrom + MathUtils.wrapDegrees(turn - headTurnFrom) * k;
+            headSize = headSizeFrom + (size - headSizeFrom) * k;
+            if (headGlideStep >= headGlideSteps) headGlideSteps = 0;
+        }
+
+        // MineQuack: where the display is drawn now, gliding between two Java updates
+        Vector3f drawn = renderPos != null ? renderPos : position;
+        float drawnYaw = renderPos != null ? renderYaw : getYaw();
 
         float frameYaw;
         if (billboard == BILLBOARD_VERTICAL || billboard == BILLBOARD_CENTER) {
-            Vector3f toViewer = session.getPlayerEntity().position().sub(position);
+            Vector3f toViewer = session.getPlayerEntity().position().sub(drawn);
             frameYaw = (float) Math.toDegrees(Math.atan2(-toViewer.getX(), toViewer.getZ()));
         } else {
-            frameYaw = getYaw();
+            frameYaw = drawnYaw;
         }
         double radians = Math.toRadians(frameYaw);
         float sin = (float) Math.sin(radians);
         float cos = (float) Math.cos(radians);
-        Vector3f world = position.add(centre.getX() * cos - centre.getZ() * sin, centre.getY(), centre.getX() * sin + centre.getZ() * cos);
+        Vector3f world = drawn.add(headCentre.getX() * cos - headCentre.getZ() * sin, headCentre.getY(), headCentre.getX() * sin + headCentre.getZ() * cos);
 
-        // The face is on the display's -Z: the item model turns the skull over (180 about X) and the item display
-        // turns every item about Y, so a FIXED head looks away from its yaw and a billboarded one away from the viewer
-        Vector3f facing = left.mul(right).rotate(0, 0, -1);
-        float yaw = MathUtils.wrapDegrees(frameYaw + (float) Math.toDegrees(Math.atan2(-facing.getX(), facing.getZ())));
-        float size = (javaScale.getX() + javaScale.getY() + javaScale.getZ()) / 3;
+        float yaw = MathUtils.wrapDegrees(frameYaw + headTurn);
+        size = headSize;
         Vector3f origin = world.up(HEAD_CENTRE_Y * size);
 
         boolean first = headPlacedAt == null;
@@ -898,25 +1010,41 @@ public class ItemDisplayEntity extends SlotDisplayEntity implements Tickable {
 
     @Override
     public void moveAbsoluteRaw(Vector3f position, float yaw, float pitch, float headYaw, boolean isOnGround, boolean teleported) {
+        // Where Bedrock draws it now (moveRelativeRaw has already changed this.position)
+        Vector3f drawnPos = renderPos;
+        float drawnYaw = renderYaw;
+        float drawnPitch = renderPitch;
+
         setPosition(position);
         setYaw(yaw);
         setPitch(pitch);
         setHeadYaw(headYaw);
         setOnGround(isOnGround);
 
-        MoveEntityAbsolutePacket moveEntityPacket = new MoveEntityAbsolutePacket();
-        moveEntityPacket.setRuntimeEntityId(geyserId);
-        moveEntityPacket.setPosition(bedrockPosition());
-        moveEntityPacket.setRotation(bedrockRotation());
-        moveEntityPacket.setOnGround(isOnGround);
-        moveEntityPacket.setTeleported(teleported);
-
-        session.sendUpstreamPacket(moveEntityPacket);
+        // MineQuack: glide like Java over teleport_duration ticks. Not a rider (its vehicle carries it on the
+        // client), not a spawn or respawn, not a far jump (a real teleport)
+        boolean glide = !teleported && valid && teleportDuration > 1 && drawnPos != null && vehicle == null
+                && drawnPos.distanceSquared(position) < 64 * 64;
+        if (glide) {
+            glideFromPos = drawnPos;
+            glideFromYaw = drawnYaw;
+            glideFromPitch = drawnPitch;
+            glideStep = 0;
+            glideSteps = teleportDuration;
+        } else {
+            glideSteps = 0;
+            renderPos = position;
+            renderYaw = yaw;
+            renderPitch = pitch;
+            sendRenderedMove(teleported);
+        }
 
         // The entity's yaw and pitch are part of the block kinds' transform
         if (kind != null && kind != Kind.ITEM_RIG && valid && (yaw != lastYaw || pitch != lastPitch)) {
             lastYaw = yaw;
             lastPitch = pitch;
+            // MineQuack: Java turns the display over teleport_duration ticks; the pack turns it as long
+            if (!teleported) cubeGlideTicks = Math.max(cubeGlideTicks, teleportDuration);
             updateBedrockMetadata();
         }
     }

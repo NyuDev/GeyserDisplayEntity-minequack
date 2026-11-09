@@ -17,6 +17,7 @@ import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.util.MathUtils;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ByteEntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.IntEntityMetadata;
 
 import static me.geyserextensionists.geyserdisplayentity.GeyserDisplayEntity.MAX_VALUE;
 import static me.geyserextensionists.geyserdisplayentity.GeyserDisplayEntity.MIN_VALUE;
@@ -44,8 +45,22 @@ public class SlotDisplayEntity extends Entity {
     protected Quaternionf lastLeft = Quaternionf.IDENTITY;
     protected Quaternionf lastRight = Quaternionf.IDENTITY;
 
+    // MineQuack: Java glides a display between two updates. Position and rotation over teleport_duration
+    // ticks, the transformation over interpolation_duration ticks. Bedrock gets the same glide (see
+    // ItemDisplayEntity: the proxy for the position, the pack for the transform).
+    protected int teleportDuration = 0;
+    protected int transformDuration = 0;
+
     public SlotDisplayEntity(EntitySpawnContext entitySpawnContext) {
         super(entitySpawnContext);
+    }
+
+    public void setTeleportDuration(IntEntityMetadata entityMetadata) {
+        this.teleportDuration = Math.max(0, entityMetadata.getPrimitiveValue());
+    }
+
+    public void setTransformDuration(IntEntityMetadata entityMetadata) {
+        this.transformDuration = Math.max(0, entityMetadata.getPrimitiveValue());
     }
 
     public void updateMainHand(GeyserSession session) {

@@ -6,28 +6,28 @@
 			"bones": {
 				"block_left": {
 					"position": [
-						"q.property('geyser:t_x')",
-						"q.property('geyser:t_y')",
-						"q.property('geyser:t_z')"
+						"(v.gb_on ? v.gb_tx : q.property('geyser:t_x'))",
+						"(v.gb_on ? v.gb_ty : q.property('geyser:t_y'))",
+						"(v.gb_on ? v.gb_tz : q.property('geyser:t_z'))"
 					],
 					"rotation": [
-						"q.property('geyser:r_x')",
-						"q.property('geyser:r_y')",
-						"q.property('geyser:r_z')"
+						"(v.gb_on ? v.gb_rx : q.property('geyser:r_x'))",
+						"(v.gb_on ? v.gb_ry : q.property('geyser:r_y'))",
+						"(v.gb_on ? v.gb_rz : q.property('geyser:r_z'))"
 					]
 				},
 				"block_scale": {
 					"scale": [
-						"q.property('geyser:s_x')",
-						"q.property('geyser:s_y')",
-						"q.property('geyser:s_z')"
+						"(v.gb_on ? v.gb_sx : q.property('geyser:s_x'))",
+						"(v.gb_on ? v.gb_sy : q.property('geyser:s_y'))",
+						"(v.gb_on ? v.gb_sz : q.property('geyser:s_z'))"
 					]
 				},
 				"block_right": {
 					"rotation": [
-						"q.property('geyser:b_rrx')",
-						"q.property('geyser:b_rry')",
-						"q.property('geyser:b_rrz')"
+						"(v.gb_on ? v.gb_qx : q.property('geyser:b_rrx'))",
+						"(v.gb_on ? v.gb_qy : q.property('geyser:b_rry'))",
+						"(v.gb_on ? v.gb_qz : q.property('geyser:b_rrz'))"
 					]
 				},
 				"block_shape": {
